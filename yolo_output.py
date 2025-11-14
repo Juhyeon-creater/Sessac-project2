@@ -61,8 +61,7 @@ for i, filename in enumerate(files):
             person_kpts = results[0].keypoints.data[0].cpu().numpy()
             
             frame_data = {
-                "Frame": frame_idx,
-                "Time_Sec": round(frame_idx / fps, 3)
+                "Frame": frame_idx
             }
             
             for k, kp in enumerate(person_kpts):
