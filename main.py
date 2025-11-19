@@ -128,30 +128,43 @@ def handle_client(connection):
     """
     클라이언트가 접속하면:
     - 요청 수신 (내용은 사용하지 않음)
-    - 두 개의 MPU6050 센서 값을 JSON으로 인코딩하여 전송
+    - 두 개의 MPU6050 센서 값을 JSON + 간단 HTTP 헤더로 전송
     """
     try:
         client, addr = connection.accept()
+    except OSError:
+        return
+
+    try:
         client.settimeout(2)
 
-        # 요청 데이터 읽기 (내용은 무시)
+        # 요청 데이터 읽기 (내용은 무시해도 됨)
         try:
             _ = client.recv(1024)
         except OSError:
             pass
 
-        # 센서 데이터 전송 (mpu1, mpu2 포함)
+        # 센서 데이터 읽기
         sensor_data = read_all_sensors()
-        mess = json.dumps(sensor_data)
+        body = json.dumps(sensor_data)
 
-        try:
-            client.sendall(mess)
-        except OSError:
-            pass
+        # 간단 HTTP 헤더 + JSON 바디
+        header = (
+            "HTTP/1.0 200 OK\r\n"
+            "Content-Type: application/json\r\n"
+            f"Content-Length: {len(body)}\r\n"
+            "\r\n"
+        )
 
-        client.close()
+        client.sendall(header.encode() + body.encode())
+
     except OSError:
         pass
+    finally:
+        try:
+            client.close()
+        except OSError:
+            pass
 
 # ===============================
 # ⑥ 메인 루프
