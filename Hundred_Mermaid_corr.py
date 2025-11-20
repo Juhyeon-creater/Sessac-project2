@@ -1,5 +1,5 @@
 # -------------------------------------------------
-# Hundred, Mermaid 분석 스크립트
+# Hundred, Mermaid 자세의 상관계수 분석
 #    - YOLO Angle ↔ Pelvis Roll Diff 상관계수 분석
 #    - Pelvis Down ↔ YOLO Bad 분류 상관관계
 #    - 포트폴리오 제출용 코드 (주석 상세)
