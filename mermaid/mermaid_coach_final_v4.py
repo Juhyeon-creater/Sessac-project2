@@ -450,3 +450,5 @@ def run_mermaid_coach():
 
 if __name__ == "__main__":
     run_mermaid_coach()
+
+#디자인 대충 픽스 - 글자 크기 줄이고, 자막 여백 위에 조금 있는데 수정해보고, 대사 조금 수정
