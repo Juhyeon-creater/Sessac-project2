@@ -17,7 +17,7 @@ from PIL import ImageFont, ImageDraw, Image
 # 1. 설정값 (Thresholds)
 # ===============================
 TARGET_ANGLE_MIN = 18.0
-TARGET_ANGLE_MAX = 58.0
+TARGET_ANGLE_MAX = 53.0
 START_LIFT_THRESH = 10.0 # 운동 시작으로 간주할 최소 다리 각도
 PELVIS_SENSOR_THRESH = 5.0 
 
