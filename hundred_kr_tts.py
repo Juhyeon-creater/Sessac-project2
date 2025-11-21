@@ -11,54 +11,41 @@ from collections import deque
 import pyttsx3
 import threading
 import queue
-from PIL import ImageFont, ImageDraw, Image  # [추가] 한글 출력을 위한 라이브러리
+from PIL import ImageFont, ImageDraw, Image
 
 # ===============================
 # 1. 설정값 (Thresholds)
 # ===============================
-EAR_SHOULDER_THRESH = 0.28  
-SPINE_ANGLE_LIMIT = 35      
-START_BENDING_THRESH = 15   
-PELVIS_SENSOR_THRESH = 5.0  
+TARGET_ANGLE_MIN = 18.0
+TARGET_ANGLE_MAX = 58.0
+START_LIFT_THRESH = 10.0 # 운동 시작으로 간주할 최소 다리 각도
+PELVIS_SENSOR_THRESH = 5.0 
 
 SENSOR_URL = "http://192.168.4.1"
 SENSOR_TIMEOUT = 0.05
-WINDOW_NAME = "Mermaid AI Coach (Korean)"
+WINDOW_NAME = "Hundred AI Coach (Korean)"
 CALIBRATION_FRAMES = 60
 
 # ===============================
-# 2. 한글 출력 헬퍼 함수 [핵심 추가]
+# 2. 한글 출력 헬퍼 함수
 # ===============================
 def draw_korean_text(img, text, position, font_size, color):
-    """
-    OpenCV 이미지에 한글 텍스트를 합성하는 함수
-    color: (B, G, R) 튜플
-    """
-    # 1. OpenCV(BGR) -> PIL(RGB) 변환
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(img_pil)
-
-    # 2. 폰트 설정 (윈도우: 맑은고딕, 맥: 애플고딕 등)
     try:
-        # Windows 기본 폰트
         font = ImageFont.truetype("malgun.ttf", font_size)
     except:
         try:
-            # Mac 기본 폰트
             font = ImageFont.truetype("AppleGothic.ttf", font_size)
         except:
-            # 폰트가 없으면 기본 폰트 (한글 깨짐 주의)
             font = ImageFont.load_default()
     
-    # 3. 텍스트 그리기 (PIL은 RGB 색상 사용하므로 BGR -> RGB 변환)
     fill_color = (color[2], color[1], color[0]) 
     draw.text(position, text, font=font, fill=fill_color)
-
-    # 4. PIL(RGB) -> OpenCV(BGR) 변환
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
 
 # ===============================
-# 3. TTS (음성) 설정
+# 3. TTS (음성) 설정 - 큐 방식
 # ===============================
 tts_queue = queue.Queue()
 
@@ -74,7 +61,7 @@ def tts_worker_thread():
             engine.stop() 
             del engine    
         except Exception as e:
-            print(f"TTS 오류 발생: {e}")
+            print(f"TTS 오류: {e}")
         tts_queue.task_done()
 
 threading.Thread(target=tts_worker_thread, daemon=True).start()
@@ -84,7 +71,7 @@ def speak_message(message):
         tts_queue.put(message)
 
 last_speech_time = 0
-speech_cooldown = 4.0 
+speech_cooldown = 4.0
 
 def trigger_voice_feedback(message):
     global last_speech_time
@@ -114,7 +101,6 @@ class FPSCalibrator:
                 self.frame_times.append(delta)
         self.prev_time = current_time
         self.frame_count += 1
-        
         if not self.is_calibrated and len(self.frame_times) >= self.calibration_frames:
             self.finalize_calibration()
     
@@ -138,7 +124,7 @@ class VideoRecorder:
     
     def start_recording(self):
         try:
-            self.filename = f"Mermaid_Log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+            self.filename = f"Hundred_Log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             self.writer = cv2.VideoWriter(self.filename, fourcc, self.fps, (self.width, self.height))
             if not self.writer.isOpened(): return False
@@ -171,37 +157,41 @@ class VideoRecorder:
         return False
 
 # ===============================
-# 5. YOLO 및 센서 로직
+# 5. YOLO 및 센서 로직 (Hundred)
 # ===============================
-def calculate_mermaid_metrics(kps):
-    l_sh, r_sh = kps[5][:2], kps[6][:2]
-    l_ear, r_ear = kps[3][:2], kps[4][:2]
-    l_hip, r_hip = kps[11][:2], kps[12][:2]
+def calculate_leg_angle(kps):
+    """스마트 다리 선택 및 각도 계산"""
+    l_conf = kps[15][2]
+    r_conf = kps[16][2]
 
+    if l_conf >= r_conf:
+        hip = kps[11][:2]
+        ankle = kps[15][:2]
+    else:
+        hip = kps[12][:2]
+        ankle = kps[16][:2]
+
+    dy = -(ankle[1] - hip[1])
+    dx = abs(ankle[0] - hip[0])
+    angle = np.degrees(np.arctan2(dy, dx))
+    return angle
+
+def check_lying_ready(kps):
+    """누워있는지 확인 (어깨-골반 가로 길이가 세로보다 길면 누움)"""
+    l_sh, r_sh = kps[5][:2], kps[6][:2]
+    l_hip, r_hip = kps[11][:2], kps[12][:2]
+    
     mid_sh = (l_sh + r_sh) / 2
     mid_hip = (l_hip + r_hip) / 2
-    torso_len = np.linalg.norm(mid_sh - mid_hip)
     
-    if torso_len == 0: return 0, 0, 0
-
-    spine_vec = mid_sh - mid_hip
-    vertical_vec = np.array([0, -1])
+    dx = abs(mid_sh[0] - mid_hip[0])
+    dy = abs(mid_sh[1] - mid_hip[1])
     
-    spine_u = spine_vec / np.linalg.norm(spine_vec)
-    dot_prod = np.dot(spine_u, vertical_vec)
-    spine_angle = np.degrees(np.arccos(np.clip(dot_prod, -1.0, 1.0)))
+    # 신뢰도 체크
+    valid_kps = (kps[5][2]>0.5 and kps[11][2]>0.5)
     
-    l_dist = np.linalg.norm(l_ear - l_sh) / torso_len
-    r_dist = np.linalg.norm(r_ear - r_sh) / torso_len
-    min_ear_sh_dist = min(l_dist, r_dist)
-
-    return spine_angle, min_ear_sh_dist, torso_len
-
-def check_basic_pose(kps):
-    nose_conf = kps[0][2]
-    hip_conf = min(kps[11][2], kps[12][2])
-    if nose_conf < 0.5 or hip_conf < 0.5: return False
-    return True
+    if not valid_kps: return False
+    return dx > dy
 
 def get_mpu_data():
     try:
@@ -232,11 +222,9 @@ def check_pelvis_sensor(sensor_data):
 # ===============================
 # 6. 메인 실행 루프
 # ===============================
-# ... (이전 import 및 설정 코드는 동일) ...
-
-def run_mermaid_coach():
+def run_hundred_coach():
     print("\n" + "="*60)
-    print("  MERMAID AI COACH (KOREAN VERSION)")
+    print("  HUNDRED AI COACH (KOREAN VERSION)")
     print("="*60 + "\n")
 
     recorded_data_log = []
@@ -260,19 +248,16 @@ def run_mermaid_coach():
     frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-    print(f"[3/3] 준비 완료! (Resolution: {frame_width}x{frame_height})")
-    
-    # [수정 1] 시작 멘트 변경
-    speak_message("머메이드 코칭을 시작합니다. 정면을 보고 앉아주세요.")
+    print(f"[3/3] 준비 완료!")
+    speak_message("헌드레드 코칭을 시작합니다. 편안하게 누워주세요.")
 
     frame_num = 0
     is_recording = False
     display_fps = 0.0
     recent_times = deque(maxlen=30)
     
-    # [수정 2] 상태 추적 변수 추가
-    current_state = "Standby" # 현재 상태
-    prev_state = None         # 이전 프레임의 상태
+    current_state = "Standby"
+    prev_state = None
 
     try:
         while True:
@@ -298,21 +283,20 @@ def run_mermaid_coach():
                 frame = results[0].plot(img=frame)
                 kps = results[0].keypoints.data[0].cpu().numpy()
 
-                if check_basic_pose(kps):
-                    spine_angle, es_dist, _ = calculate_mermaid_metrics(kps)
+                if check_lying_ready(kps):
+                    angle = calculate_leg_angle(kps)
                     
-                    if spine_angle < START_BENDING_THRESH:
-                        # [READY] 준비 자세 (앉아있음)
+                    if angle < START_LIFT_THRESH:
+                        # [READY] 누워있지만 다리 안 듦
                         current_state = "Ready"
-                        status_msg = "옆으로 숙이세요"
-                        status_color = (0, 255, 255)
+                        status_msg = "다리를 들어올리세요"
+                        status_color = (0, 255, 255) # 노란색
                         
-                        # [수정 3] 준비 자세 진입 시 멘트 출력 (한 번만)
                         if prev_state == "Standby":
-                            speak_message("준비 자세가 확인되었습니다. 곧 머메이드 자세를 시작하겠습니다.")
-                        
+                            speak_message("준비 자세가 확인되었습니다. 다리를 들어 올려주세요.")
+                            
                     else:
-                        # [EXERCISE] 운동 중
+                        # [EXERCISE] 다리 듦 (운동 중)
                         current_state = "Exercise"
                         
                         sensor_data = get_mpu_data()
@@ -320,20 +304,18 @@ def run_mermaid_coach():
                         
                         warning_list = []
                         
-                        # (A) 골반비틀림
+                        # (A) 골반 체크
                         if pelvis_status == "UNSTABLE":
-                            warning_list.append((f"골반비틀림! ({pelvis_diff:.1f})", "골반이 들리고 있어요"))
+                            warning_list.append((f"골반비틀림! ({pelvis_diff:.1f})", "골반이 흔들립니다"))
                         
-                        # (B) 어깨 내리기
-                        if es_dist < EAR_SHOULDER_THRESH:
-                            warning_list.append((f"어깨 내리세요! ({es_dist:.2f})", "어깨를 내려주세요"))
-                        
-                        # (C) 무리한 꺾기
-                        if spine_angle > SPINE_ANGLE_LIMIT:
-                            warning_list.append((f"무리한 꺾기 주의! ({spine_angle:.1f})", "너무 많이 꺾지 마세요"))
+                        # (B) 다리 각도 체크
+                        if angle < TARGET_ANGLE_MIN:
+                            warning_list.append((f"너무 낮아요! ({angle:.1f})", "다리를 더 올려주세요"))
+                        elif angle > TARGET_ANGLE_MAX:
+                            warning_list.append((f"너무 높아요! ({angle:.1f})", "다리를 조금만 내려주세요"))
                         
                         if not warning_list:
-                            status_msg = f"좋음 ({spine_angle:.1f})"
+                            status_msg = f"좋음 ({angle:.1f})"
                             status_color = (0, 255, 0)
                         else:
                             display_text, voice_text = warning_list[0]
@@ -343,27 +325,26 @@ def run_mermaid_coach():
                             trigger_voice_feedback(voice_text)
 
                         log_entry.update({
-                            'Spine_Angle': spine_angle,
+                            'Leg_Angle': angle,
                             'Warning': warning_list[0][0] if warning_list else "None"
                         })
                 else:
-                    # [STANDBY] 전신 안 나옴
+                    # [STANDBY] 안 누워있음
                     current_state = "Standby"
-                    status_msg = "전신이 보이게 앉아주세요"
+                    status_msg = "전신이 보이게 누워주세요"
                     status_color = (0, 0, 255)
 
-                # 상태 업데이트 (로그 및 다음 루프용)
+                # 상태 업데이트
                 log_entry['State'] = current_state
-                prev_state = current_state # 상태 기억
+                prev_state = current_state
 
-                # 한글 출력 함수 사용
+                # 한글 텍스트 출력
                 frame = draw_korean_text(frame, status_msg, (50, 100), 40, status_color)
                 
                 if border_color:
                     cv2.rectangle(frame, (0,0), (w, h), border_color, 15)
 
-            # ... (이하 녹화 및 FPS 표시 코드는 동일) ...
-            # FPS 및 REC 표시 (영어로 유지)
+            # FPS 및 REC 표시
             if not calibrator.is_calibrated:
                 progress = calibrator.get_progress()
                 cv2.putText(frame, f"Calibrating... {progress}%", (20, h - 50),
@@ -413,8 +394,8 @@ def run_mermaid_coach():
         cv2.destroyAllWindows()
         
         if recorded_data_log:
-            pd.DataFrame(recorded_data_log).to_csv(f"Mermaid_Data_{int(time.time())}.csv", index=False)
+            pd.DataFrame(recorded_data_log).to_csv(f"Hundred_Data_{int(time.time())}.csv", index=False)
             print("[✓] 데이터 로그 저장 완료")
 
 if __name__ == "__main__":
-    run_mermaid_coach()
+    run_hundred_coach()
