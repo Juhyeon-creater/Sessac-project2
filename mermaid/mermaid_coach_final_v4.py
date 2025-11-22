@@ -43,7 +43,7 @@ def get_font(size):
 
 def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,255,255), align="left"):
     """
-    반투명 배경이 있는 예쁜 텍스트 그리기 (OpenCV 이미지에 적용)
+    반투명 배경이 있는 예쁜 텍스트 그리기 (수정됨: 여백 축소 및 투명도 조절)
     align: "left"(상태 배지용), "center"(피드백 자막용)
     """
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -56,20 +56,24 @@ def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,25
     h = bbox[3] - bbox[1]
     
     x, y = pos
-    padding = 15
+    
+    # [수정] 여백 분리 및 축소 (상하 여백을 타이트하게)
+    padding_x = 12  # 좌우 여백
+    padding_y = 4   # 상하 여백 (기존 15에서 대폭 축소)
     
     # 위치 및 배경 박스 계산
     if align == "center":
         x = x - (w // 2)
-        bg_box = [x - padding, y - padding, x + w + padding, y + h + padding]
+        # 폰트 렌더링 특성상 상단 여백이 조금 더 남아보일 수 있어 y축 보정
+        bg_box = [x - padding_x, y - padding_y, x + w + padding_x, y + h + padding_y + 2]
     else:
-        bg_box = [x, y, x + w + padding * 2, y + h + padding * 2]
-        x += padding
-        y += padding
+        bg_box = [x, y, x + w + padding_x * 2, y + h + padding_y * 2]
+        x += padding_x
+        y += padding_y
 
-    # 반투명 배경 (Alpha = 180/255)
+    # [수정] 반투명 배경 (Alpha = 153/255 => 약 60%)
     r, g, b = bg_color
-    draw.rectangle(bg_box, fill=(r, g, b, 180))
+    draw.rectangle(bg_box, fill=(r, g, b, 153))
     
     # 텍스트
     draw.text((x, y), text, font=font, fill=(*text_color, 255))
@@ -232,7 +236,7 @@ def check_pelvis_sensor(sensor_data):
 # 5. 메인 실행 루프
 # ===============================
 def run_mermaid_coach():
-    print("--- MERMAID AI COACH (V9: UI Design Upgrade) ---")
+    print("--- MERMAID AI COACH (V9.1: Design Upgrade Final) ---")
     
     guide_img_original = None
     if os.path.exists(GUIDE_IMAGE_PATH):
@@ -369,7 +373,7 @@ def run_mermaid_coach():
                                 subtitle_text = "자세가 아주 좋습니다!"
                             else:
                                 display_text, voice_text = warning_list[0]
-                                badge_text = "자세 주의"
+                                badge_text = "자세 부정확"
                                 badge_color = (200, 0, 0) # 빨강
                                 subtitle_text = display_text
                                 border_color = (0, 0, 255)
@@ -393,12 +397,12 @@ def run_mermaid_coach():
                     new_speech_state = "STANDBY"
 
                 # === [디자인 적용] 텍스트 그리기 ===
-                # 1. 상태 배지 (좌측 상단)
+                # 1. 상태 배지 (좌측 상단) - 폰트 24 유지
                 frame = draw_ui_text(frame, badge_text, (20, 20), 24, bg_color=badge_color, align="left")
                 
-                # 2. 피드백 자막 (중앙 하단)
+                # 2. 피드백 자막 (중앙 하단) - [수정] 폰트 20으로 축소, 위치 미세 조정
                 # 자막 배경은 항상 검정 반투명
-                frame = draw_ui_text(frame, subtitle_text, (w//2, h-60), 32, bg_color=(0,0,0), align="center")
+                frame = draw_ui_text(frame, subtitle_text, (w//2, h-50), 20, bg_color=(0,0,0), align="center")
                 
                 if border_color:
                     cv2.rectangle(frame, (0,0), (w, h), border_color, 15)
@@ -407,7 +411,7 @@ def run_mermaid_coach():
             if new_speech_state != "INIT" and new_speech_state != current_speech_state:
                 if new_speech_state == "STANDBY": speak_message("전신이 보이게 앉아주세요.")
                 elif new_speech_state == "STABILIZING": speak_message("확인되었습니다. 움직이지 마세요.")
-                elif new_speech_state == "READY_COMPLETE": speak_message("준비 완료. 머메이드 동작을 시작하세요.")
+                elif new_speech_state == "READY_COMPLETE": speak_message("AI 코칭을 시작합니다.")
                 current_speech_state = new_speech_state
             
             # 2분할 화면 병합
@@ -450,5 +454,3 @@ def run_mermaid_coach():
 
 if __name__ == "__main__":
     run_mermaid_coach()
-
-#디자인 대충 픽스 - 글자 크기 줄이고, 자막 여백 위에 조금 있는데 수정해보고, 대사 조금 수정
