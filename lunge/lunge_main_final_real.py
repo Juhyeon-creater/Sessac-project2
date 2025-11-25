@@ -26,12 +26,12 @@ except ImportError:
 GUIDE_IMAGE_PATH = 'lunge/lunge.png'
 SEQUENCE_LENGTH = 30
 
-ENTER_THRESHOLD = 130  
-EXIT_THRESHOLD = 150   
-RESET_THRESHOLD = 165  
+ENTER_THRESHOLD = 130
+EXIT_THRESHOLD = 150
+RESET_THRESHOLD = 165
 
 # 목표 각도 (이 각도에 가까울수록 점수 높음)
-TARGET_ANGLE = 100.0 
+TARGET_ANGLE = 100.0
 
 HOLD_DURATION = 2.0
 TRANSITION_DURATION = 4.0
@@ -52,15 +52,15 @@ def get_font(size):
 # 3. TTS 시스템
 # ===============================
 tts_queue = queue.Queue()
-IS_SPEAKING = False 
+IS_SPEAKING = False
 
 def tts_worker_thread():
     global IS_SPEAKING
     while True:
         msg = tts_queue.get()
-        if msg is None: break 
-        
-        IS_SPEAKING = True 
+        if msg is None: break
+
+        IS_SPEAKING = True
         try:
             try:
                 import pythoncom
@@ -75,17 +75,17 @@ def tts_worker_thread():
             engine.stop()
             del engine
             time.sleep(0.3)
-        except Exception as e: 
+        except Exception as e:
             print(f"TTS 오류: {e}")
         finally:
-            IS_SPEAKING = False 
+            IS_SPEAKING = False
             tts_queue.task_done()
 
 threading.Thread(target=tts_worker_thread, daemon=True).start()
 
 def speak(text):
     global IS_SPEAKING
-    IS_SPEAKING = True 
+    IS_SPEAKING = True
     tts_queue.put(text)
 
 # ===============================
@@ -152,19 +152,19 @@ class LungeCoach:
     def __init__(self):
         print("시스템 로딩 중...")
         self.yolo = YOLO('yolo11s-pose.pt')
-        
+
         self.state = "INIT"
         self.state_start_time = time.time()
         self.hold_start_time = None
         self.fail_start_time = None
         self.transition_start_time = None
-        self.setup_stable_start = None 
+        self.setup_stable_start = None
 
         self.current_set = 1
         self.total_sets = 3
-        self.score_history = [] 
+        self.score_history = []
         self.angle_buffer = []
-        
+
         self.smooth_l = None
         self.smooth_r = None
         self.last_score = 0.0
@@ -177,15 +177,15 @@ class LungeCoach:
 
     def calculate_score_rule(self):
         if not self.angle_buffer: return 0.0
-        
+
         # 1. 기본 점수 (무릎 각도)
         avg_angle = np.mean(self.angle_buffer)
         diff_angle = abs(avg_angle - TARGET_ANGLE)
         angle_score = 100 - (diff_angle * 1.5)
-        
+
         # 2. 센서 감점 (5도당 3점)
         pelvis_penalty = (self.sensor_diff // 5.0) * 3.0
-        
+
         if pelvis_penalty > 0:
             print(f"⚠️ 골반 감점: -{pelvis_penalty:.1f} (기울기: {self.sensor_diff:.1f}도)")
 
@@ -201,12 +201,12 @@ class LungeCoach:
         overlay = canvas.copy()
         cv2.rectangle(overlay, (x_start, 0), (canvas.shape[1], canvas.shape[0]), (0, 0, 0), -1)
         cv2.addWeighted(overlay, 0.7, canvas, 0.3, 0, canvas)
-        
+
         avg_score = sum(self.score_history) / len(self.score_history) if self.score_history else 0
         cx = x_start + 50
         cv2.putText(canvas, "WORKOUT COMPLETE", (cx, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(canvas, f"Avg Score: {avg_score:.1f}", (cx, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
-        
+
         y_pos = 200
         for i, score in enumerate(self.score_history):
             if i < 6:
@@ -217,8 +217,8 @@ class LungeCoach:
 
     def process_frame(self, frame, frame_count):
         h, w = frame.shape[:2]
-        
-        log_data = {'Frame': frame_count, 'Timestamp': time.time(), 'State': self.state, 
+
+        log_data = {'Frame': frame_count, 'Timestamp': time.time(), 'State': self.state,
                     'L_Knee': 0, 'R_Knee': 0, 'Pelvis_Diff': 0.0, 'Score': self.last_score}
 
         if self.guide_img_raw is not None:
@@ -236,10 +236,10 @@ class LungeCoach:
         results = self.yolo(frame, verbose=False)
         current_time = time.time()
         detected = False
-        
+
         if results[0].keypoints and len(results[0].keypoints) > 0:
             kpts = results[0].keypoints.xyn[0].cpu().numpy()
-            
+
             # 좌우 반전 (거울 모드)
             l_hip, r_hip = kpts[12], kpts[11]
             l_knee, r_knee = kpts[14], kpts[13]
@@ -247,52 +247,67 @@ class LungeCoach:
 
             if l_knee[0] > 0 and r_knee[0] > 0 and l_ankle[0] > 0 and r_ankle[0] > 0:
                 detected = True
-                
+
                 raw_l = calculate_angle(l_hip, l_knee, l_ankle)
                 raw_r = calculate_angle(r_hip, r_knee, r_ankle)
-                
+
                 self.smooth_l = self.update_smooth_angle(raw_l, self.smooth_l)
                 self.smooth_r = self.update_smooth_angle(raw_r, self.smooth_r)
-                
+
                 log_data['L_Knee'] = self.smooth_l
                 log_data['R_Knee'] = self.smooth_r
 
-                cv2.putText(frame, f"L:{int(self.smooth_l)}", (int(l_knee[0]*w), int(l_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-                cv2.putText(frame, f"R:{int(self.smooth_r)}", (int(r_knee[0]*w), int(r_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-                
+                # 다리 각도 표시 제거
+                # cv2.putText(frame, f"L:{int(self.smooth_l)}", (int(l_knee[0]*w), int(l_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
+                # cv2.putText(frame, f"R:{int(self.smooth_r)}", (int(r_knee[0]*w), int(r_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
+
                 for kp in [l_hip, l_knee, l_ankle, r_hip, r_knee, r_ankle]:
                     x, y = int(kp[0]*w), int(kp[1]*h)
                     cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
 
         canvas = np.hstack((guide_resized, frame))
-        
+
         # [기존 상단 블랙바]
         cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 40), (0, 0, 0), -1)
 
         # -----------------------------------------------------------------
-        # [수정된 부분] 텍스트 그리기 로직 (PIL) - 진한 갈색, 상단 중앙, Bold
+        ##### [수정] 텍스트 및 배경색 그리기 (PIL) #####
         # -----------------------------------------------------------------
         img_pil = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
         font_guide = get_font(30)
 
-        # 1. 진한 갈색 색상 정의 (RGB)
-        dark_brown = (101, 67, 33)
+        # 1. 색상 및 폰트 정의
+        dark_brown = (101, 67, 33)  # 텍스트 색상
+        text_bg_color = (255, 248, 220) # 배경색 (크림색 예시)
 
-        # 2. 텍스트 크기 계산
+        # 2. 텍스트 크기 및 좌표 계산
         text = "자세를 취해주세요"
         bbox = draw.textbbox((0, 0), text, font=font_guide)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
-        # 3. 위치 계산 (왼쪽 이미지 영역의 상단 중앙, y=50)
-        # guide_resized 너비는 new_gw
+        # 3. 텍스트 위치 계산 (왼쪽 이미지 영역의 상단 중앙, y=50)
         x_pos = (new_gw - text_w) // 2
-        y_pos = 50 
+        y_pos = 50
 
-        # 4. 텍스트 그리기 (진한 갈색, Bold 처리)
+        # --- [추가] 배경 사각형 그리기 ---
+        padding_x = 10
+        padding_y = 5
+        # 배경 사각형 좌표 계산 (bbox 기준에 padding 추가)
+        bg_bbox = (
+            x_pos + bbox[0] - padding_x,
+            y_pos + bbox[1] - padding_y,
+            x_pos + bbox[2] + padding_x,
+            y_pos + bbox[3] + padding_y
+        )
+        # 배경 그리기
+        draw.rectangle(bg_bbox, fill=text_bg_color)
+        # ----------------------------------
+
+        # 4. 텍스트 그리기 (진한 갈색, Bold 처리) - 배경 위에 그립니다.
         draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=1, stroke_fill=dark_brown)
-        
+
         canvas = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
         # -----------------------------------------------------------------
 
@@ -344,7 +359,7 @@ class LungeCoach:
                 elif self.state == "LEFT_HOLD":
                     elapsed = current_time - self.hold_start_time
                     self.angle_buffer.append(self.smooth_l)
-                    
+
                     if self.smooth_l > EXIT_THRESHOLD:
                         if self.fail_start_time is None: self.fail_start_time = current_time
                         elif current_time - self.fail_start_time > 0.5:
@@ -360,7 +375,7 @@ class LungeCoach:
                     if elapsed >= HOLD_DURATION:
                         score = self.calculate_score_rule()
                         self.last_score = score
-                        
+
                         if score >= PASS_SCORE:
                             self.score_history.append(score)
                             speak("좋습니다. 오른 다리 준비하세요.")
@@ -396,7 +411,7 @@ class LungeCoach:
                 elif self.state == "RIGHT_HOLD":
                     elapsed = current_time - self.hold_start_time
                     self.angle_buffer.append(self.smooth_r)
-                    
+
                     if self.smooth_r > EXIT_THRESHOLD:
                         if self.fail_start_time is None: self.fail_start_time = current_time
                         elif current_time - self.fail_start_time > 0.5:
@@ -412,7 +427,7 @@ class LungeCoach:
                     if elapsed >= HOLD_DURATION:
                         score = self.calculate_score_rule()
                         self.last_score = score
-                        
+
                         if score >= PASS_SCORE:
                             self.score_history.append(score)
                             if self.current_set < self.total_sets:
@@ -444,21 +459,22 @@ class LungeCoach:
         if not detected:
             cv2.putText(frame, "BODY NOT DETECTED", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
 
-        info_text = f"Set {self.current_set}/{self.total_sets} | {self.state}"
-        if IS_SPEAKING: info_text += " [Speaking...]"
+        # [수정됨] 상태(State)와 말하기 상태([Speaking...]) 제거하고 세트 정보만 남김
+        info_text = f"Set {self.current_set}/{self.total_sets}"
         cv2.putText(canvas, info_text, (new_gw + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
+
         if self.sensor_status == "WARNING":
             cv2.putText(canvas, f"PELVIS WARNING ({self.sensor_diff:.1f})", (new_gw + 10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
             log_data['Warning'] = 'Pelvis Tilt'
-        
-        score_text = f"Last Score: {self.last_score:.1f}"
-        score_color = (0, 255, 0) if self.last_score >= PASS_SCORE else (0, 0, 255)
-        cv2.putText(canvas, score_text, (new_gw + 400, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, score_color, 2)
+
+        # [수정됨] Score 점수 표시 제거
+        # score_text = f"Last Score: {self.last_score:.1f}"
+        # score_color = (0, 255, 0) if self.last_score >= PASS_SCORE else (0, 0, 255)
+        # cv2.putText(canvas, score_text, (new_gw + 400, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, score_color, 2)
 
         if self.state == "END":
             canvas = self.draw_report(canvas, w)
-            
+
         return canvas, log_data
 
 def main():
@@ -468,25 +484,25 @@ def main():
     recorder = None
     all_logs = []
     frame_count = 0
-    
+
     while cap.isOpened():
         ret, frame = cap.read()
         if not ret: break
         calibrator.update()
         frame_count += 1
         frame = cv2.flip(frame, 1)
-        
+
         final_view, log_data = coach.process_frame(frame, frame_count)
-        
+
         if recorder and recorder.is_recording:
             recorder.write_frame(final_view)
             all_logs.append(log_data)
             cv2.circle(final_view, (final_view.shape[1] - 30, 30), 10, (0, 0, 255), -1)
 
         cv2.imshow('AI Lunge Coach - Final V17', final_view)
-        
+
         key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'): 
+        if key == ord('q'):
             break
         elif key == ord('r'):
             if recorder is None:

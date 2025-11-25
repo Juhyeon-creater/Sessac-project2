@@ -505,7 +505,8 @@ def run_mermaid_coach():
             font_guide = get_font(30)
 
             # 1. 진한 갈색 색상 정의 (RGB)
-            dark_brown = (101, 67, 33)
+            dark_brown = (101, 67, 33) #폰트색
+            text_bg_color = (255, 248, 220) # 배경색 (크림색 예시)
 
             # 2. 텍스트 크기 계산
             text = "자세를 취해주세요"
@@ -527,6 +528,18 @@ def run_mermaid_coach():
             # 상단 위치 (위에서 50px 아래로)
             y_pos = 50 
 
+            # --- [추가] 배경 사각형 그리기 ---
+            padding_x = 10
+            padding_y = 5
+            # 배경 사각형 좌표 계산
+            bg_bbox = (
+                x_pos + bbox[0] - padding_x,
+                y_pos + bbox[1] - padding_y,
+                x_pos + bbox[2] + padding_x,
+                y_pos + bbox[3] + padding_y
+            )
+            # 배경 그리기
+            draw.rectangle(bg_bbox, fill=text_bg_color)
             # 4. 텍스트 그리기 (진한 갈색, Bold 처리: stroke_width 추가)
             draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=2, stroke_fill=dark_brown)
             
