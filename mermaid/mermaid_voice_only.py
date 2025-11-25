@@ -29,7 +29,7 @@ MOVEMENT_THRESH = 0.04
 
 SENSOR_URL = "http://192.168.4.1"
 SENSOR_TIMEOUT = 0.05
-WINDOW_NAME = "Mermaid AI Coach (Design Ver)"
+WINDOW_NAME = "Mermaid AI Coach (Voice Mode)"
 CALIBRATION_FRAMES = 60
 
 GUIDE_IMAGE_PATH = "mermaid/reference_pose.png" 
@@ -43,61 +43,35 @@ def get_font(size):
 
 def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,255,255), align="left"):
     """
-    반투명 배경이 있는 예쁜 텍스트 그리기 (수정됨: 여백 축소 및 투명도 조절)
-    align: "left"(상태 배지용), "center"(피드백 자막용)
+    반투명 배경이 있는 예쁜 텍스트 그리기
     """
+    if not text: return img 
+
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
     draw = ImageDraw.Draw(img_pil, 'RGBA')
     font = get_font(font_size)
     
-    # 텍스트 크기 측정
     bbox = draw.textbbox((0, 0), text, font=font)
     w = bbox[2] - bbox[0]
     h = bbox[3] - bbox[1]
     
     x, y = pos
+    padding_x = 12
+    padding_y = 4
     
-    # [수정] 여백 분리 및 축소 (상하 여백을 타이트하게)
-    padding_x = 12  # 좌우 여백
-    padding_y = 4   # 상하 여백 (기존 15에서 대폭 축소)
-    
-    # 위치 및 배경 박스 계산
     if align == "center":
         x = x - (w // 2)
-        # 폰트 렌더링 특성상 상단 여백이 조금 더 남아보일 수 있어 y축 보정
         bg_box = [x - padding_x, y - padding_y, x + w + padding_x, y + h + padding_y + 2]
     else:
         bg_box = [x, y, x + w + padding_x * 2, y + h + padding_y * 2]
         x += padding_x
         y += padding_y
 
-    # [수정] 반투명 배경 (Alpha = 153/255 => 약 60%)
     r, g, b = bg_color
-    draw.rectangle(bg_box, fill=(r, g, b, 153))
-    
-    # 텍스트
+    draw.rectangle(bg_box, fill=(r, g, b, 153)) 
     draw.text((x, y), text, font=font, fill=(*text_color, 255))
     
     return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-
-def overlay_transparent(background, overlay, x, y, overlay_size=None):
-    bg_h, bg_w, _ = background.shape
-    if overlay_size is not None:
-        overlay = cv2.resize(overlay, overlay_size)
-    h, w, c = overlay.shape
-    if x >= bg_w or y >= bg_h: return background
-    h = min(h, bg_h - y)
-    w = min(w, bg_w - x)
-    if h <= 0 or w <= 0: return background
-    overlay = overlay[:h, :w]
-    if c == 4:
-        alpha = overlay[:, :, 3] / 255.0
-        for i in range(3): 
-            background[y:y+h, x:x+w, i] = (1. - alpha) * background[y:y+h, x:x+w, i] + \
-                                          alpha * overlay[:, :, i]
-    else:
-        background[y:y+h, x:x+w] = overlay
-    return background
 
 # ===============================
 # 3. TTS & Recorders
@@ -138,26 +112,36 @@ class FPSCalibrator:
         self.prev_time = time.perf_counter()
         self.is_calibrated = False
         self.measured_fps = 30.0
+    
     def update(self):
         current_time = time.perf_counter()
         if self.frame_count > 0:
             delta = current_time - self.prev_time
-            if 0.01 < delta < 1.0: self.frame_times.append(delta)
+            if delta > 0.001: 
+                self.frame_times.append(delta)
         self.prev_time = current_time
         self.frame_count += 1
+        
         if not self.is_calibrated and len(self.frame_times) >= self.calibration_frames:
             self.measured_fps = 1.0 / np.mean(list(self.frame_times))
             self.is_calibrated = True
-    def get_measured_fps(self): return self.measured_fps
-    def get_progress(self): return int((len(self.frame_times) / self.calibration_frames) * 100)
+            
+    def get_best_fps(self):
+        if self.is_calibrated:
+            return self.measured_fps
+        elif len(self.frame_times) > 5:
+            return 1.0 / np.mean(list(self.frame_times))
+        else:
+            return 30.0
 
 class VideoRecorder:
     def __init__(self, width, height, fps):
         self.writer = None; self.fps = fps; self.width = width; self.height = height
         self.is_recording = False; self.frame_interval = 1.0 / fps; self.last_write_time = None
     def start_recording(self):
-        self.writer = cv2.VideoWriter(f"Mermaid_Log_{datetime.now().strftime('%H%M%S')}.mp4", 
-                                      cv2.VideoWriter_fourcc(*'mp4v'), self.fps, (self.width, self.height))
+        filename = f"Mermaid_Video_{datetime.now().strftime('%H%M%S')}.mp4"
+        print(f"[녹화 시작] 파일명: {filename}, FPS: {self.fps:.2f}")
+        self.writer = cv2.VideoWriter(filename, cv2.VideoWriter_fourcc(*'mp4v'), self.fps, (self.width, self.height))
         self.is_recording = True; self.last_write_time = time.perf_counter()
     def write_frame(self, frame, current_time):
         if self.writer and self.is_recording:
@@ -167,10 +151,13 @@ class VideoRecorder:
                 return True
         return False
     def stop_recording(self):
-        if self.writer: self.writer.release(); self.is_recording = False
+        if self.writer: 
+            self.writer.release()
+            print("[녹화 종료] 파일 저장 완료")
+        self.is_recording = False
 
 # ===============================
-# 4. YOLO 분석 로직 (V8 유지)
+# 4. YOLO 분석 로직
 # ===============================
 def calculate_mermaid_metrics(kps):
     l_sh, r_sh = kps[5][:2], kps[6][:2]
@@ -225,7 +212,6 @@ def check_pelvis_sensor(sensor_data):
     m1 = sensor_data.get("mpu1", {}); m2 = sensor_data.get("mpu2", {})
     if not (m1 and m2): return "LEVEL", 0.0
     def get_roll(m): return math.degrees(math.atan2(m.get("AcY", 0), m.get("AcZ", 1)))
-    
     r1 = get_roll(m1); r2 = get_roll(m2)
     diff = r1 - r2 
     if abs(diff) <= PELVIS_SENSOR_THRESH: return "LEVEL", abs(diff)
@@ -236,7 +222,7 @@ def check_pelvis_sensor(sensor_data):
 # 5. 메인 실행 루프
 # ===============================
 def run_mermaid_coach():
-    print("--- MERMAID AI COACH (V9.1: Design Upgrade Final) ---")
+    print("--- MERMAID AI COACH (V12: Continuous Logging) ---")
     
     guide_img_original = None
     if os.path.exists(GUIDE_IMAGE_PATH):
@@ -271,13 +257,14 @@ def run_mermaid_coach():
         scale = frame_height / h_guide
         guide_img_resized = cv2.resize(guide_img_original, (int(w_guide * scale), frame_height))
 
-    speak_message("머메이드 코칭을 시작합니다. 왼쪽 사진을 보고 자세를 따라해 주세요.")
+    speak_message("전신이 보이게 앉아주세요.")
 
     frame_num = 0
     is_recording = False
     
     current_speech_state = "INIT" 
     new_speech_state = "INIT"
+    has_said_start = False 
     
     pose_history = deque(maxlen=5) 
     prev_smooth_pose = None
@@ -297,10 +284,9 @@ def run_mermaid_coach():
             results = model(frame, verbose=False, conf=0.5)
             log_entry = {'Timestamp': current_timestamp, 'Frame': frame_num}
             
-            # UI용 변수 초기화
             badge_text = "대기 중"
-            badge_color = (100, 100, 100) # 회색
-            subtitle_text = "왼쪽 모델 자세를 따라해 보세요"
+            badge_color = (100, 100, 100) 
+            subtitle_text = "" 
             border_color = None
 
             if results[0].keypoints is not None and len(results[0].keypoints.data) > 0:
@@ -310,7 +296,19 @@ def run_mermaid_coach():
                 if check_basic_pose(kps):
                     is_sitting = check_floor_sitting(kps)
                     if is_sitting:
+                        # [1] 앉아 있으면 무조건 모든 데이터 수집 (상태 무관)
                         spine_angle, es_dist, torso_len, curr_pose_coords, shoulder_level = calculate_mermaid_metrics(kps)
+                        sensor_data = get_mpu_data() # 센서값도 항상 가져옴
+                        pelvis_status, pelvis_diff = check_pelvis_sensor(sensor_data)
+                        
+                        # [2] 로그에 주요 수치 기록 (이 시점에서 미리 기록)
+                        log_entry.update({
+                            'Spine_Angle': spine_angle, 
+                            'Ear_Shoulder_Dist': es_dist, # 귀-어깨 거리 추가
+                            'Pelvis_Tilt': pelvis_diff,
+                            'Torso_Length': torso_len,
+                            'Warning': "None" # 기본값
+                        })
                         
                         pose_history.append(curr_pose_coords)
                         if len(pose_history) == 5:
@@ -322,115 +320,120 @@ def run_mermaid_coach():
                         else: movement_score = 100.0
 
                         if spine_angle < START_BENDING_THRESH:
-                            # [READY]
+                            # [READY 단계]
+                            log_entry['State'] = 'Ready' # 상태 기록
                             if is_stabilized:
                                 badge_text = "준비 완료"
-                                badge_color = (0, 180, 0) # 녹색
-                                subtitle_text = "옆으로 천천히 숙이세요"
+                                badge_color = (0, 180, 0)
+                                subtitle_text = "옆으로 천천히 숙이세요" 
                                 log_entry['State'] = 'Ready_Locked'
                                 new_speech_state = "READY_COMPLETE"
                             else:
                                 is_strict_ready = (spine_angle < STRICT_READY_ANGLE) and (shoulder_level < SHOULDER_LEVEL_THRESH)
                                 if not is_strict_ready:
                                     badge_text = "자세 교정 필요"
-                                    badge_color = (0, 165, 255) # 주황
-                                    subtitle_text = "척추와 어깨를 바르게 펴세요"
+                                    badge_color = (0, 165, 255)
+                                    subtitle_text = "척추와 어깨를 바르게 펴세요" 
                                     stable_frame_count = 0
                                 else:
                                     progress = min(stable_frame_count / REQUIRED_STABLE_FRAMES, 1.0)
                                     if progress < 1.0:
                                         badge_text = "안정화 중..."
                                         badge_color = (0, 165, 255) 
-                                        subtitle_text = f"움직이지 마세요 {int(progress*100)}%"
+                                        subtitle_text = f"움직이지 마세요 {int(progress*100)}%" 
                                         new_speech_state = "STABILIZING"
                                     else:
                                         is_stabilized = True
                                         new_speech_state = "READY_COMPLETE"
 
                                 if not is_stabilized and is_strict_ready:
-                                    # 게이지 바 디자인 (하단에 얇고 깔끔하게)
                                     bar_w = int(w * 0.6 * progress)
                                     cv2.rectangle(frame, (int(w*0.2), h-25), (int(w*0.2)+bar_w, h-15), (0, 255, 0), -1)
                                     cv2.rectangle(frame, (int(w*0.2), h-25), (int(w*0.2)+int(w*0.6), h-15), (200, 200, 200), 1)
 
                         else:
-                            # [EXERCISE]
+                            # [EXERCISE 단계]
                             is_stabilized = True 
                             new_speech_state = "EXERCISE"
                             log_entry['State'] = 'Exercise'
-                            sensor_data = get_mpu_data()
-                            pelvis_status, pelvis_diff = check_pelvis_sensor(sensor_data)
                             
                             warning_list = []
-                            if pelvis_status == "LEFT_UP": warning_list.append((f"왼쪽 골반 들림", "왼쪽 골반을 내려주세요"))
-                            elif pelvis_status == "RIGHT_UP": warning_list.append((f"오른쪽 골반 들림", "오른쪽 골반을 내려주세요"))
-                            if es_dist < EAR_SHOULDER_THRESH: warning_list.append((f"어깨 으쓱 주의", "어깨를 내려주세요"))
-                            if spine_angle > SPINE_ANGLE_LIMIT: warning_list.append((f"과도한 꺾기", "너무 많이 꺾지 마세요"))
+                            if pelvis_status == "LEFT_UP": 
+                                warning_list.append(("Left Pelvis Lift", "왼쪽 골반을 내려주세요"))
+                            elif pelvis_status == "RIGHT_UP": 
+                                warning_list.append(("Right Pelvis Lift", "오른쪽 골반을 내려주세요"))
+                            if es_dist < EAR_SHOULDER_THRESH: 
+                                warning_list.append(("Shoulder Shrug", "어깨를 내려주세요"))
+                            if spine_angle > SPINE_ANGLE_LIMIT: 
+                                warning_list.append(("Excessive Bending", "너무 많이 꺾지 마세요"))
                             
                             if not warning_list:
-                                badge_text = f"운동 중 ({int(spine_angle)}°)"
-                                badge_color = (0, 180, 0) # 녹색
-                                subtitle_text = "자세가 아주 좋습니다!"
+                                badge_text = f"자세 정확 ({int(spine_angle)}°)"
+                                badge_color = (0, 180, 0)
+                                subtitle_text = "" 
                             else:
                                 display_text, voice_text = warning_list[0]
-                                badge_text = "자세 부정확"
-                                badge_color = (200, 0, 0) # 빨강
-                                subtitle_text = display_text
+                                badge_text = "Warning" 
+                                badge_color = (200, 0, 0)
+                                subtitle_text = "" 
                                 border_color = (0, 0, 255)
                                 trigger_voice_feedback(voice_text)
+                                # 경고 발생 시 로그 업데이트
+                                log_entry['Warning'] = warning_list[0][0]
 
-                            log_entry.update({'Spine_Angle': spine_angle, 'Warning': warning_list[0][0] if warning_list else "None"})
                     else:
                         badge_text = "대기 중"
-                        subtitle_text = "바닥에 편하게 앉아주세요"
+                        subtitle_text = "바닥에 편하게 앉아주세요" 
                         log_entry['State'] = 'Standby_Pose_Error'
                         is_stabilized = False 
                         stable_frame_count = 0
                         new_speech_state = "STANDBY"
                 else:
                     badge_text = "인식 불가"
-                    subtitle_text = "전신이 보이게 앉아주세요"
+                    subtitle_text = "전신이 보이게 앉아주세요" 
                     log_entry['State'] = 'Standby'
                     is_stabilized = False
                     stable_frame_count = 0
                     pose_history.clear()
                     new_speech_state = "STANDBY"
 
-                # === [디자인 적용] 텍스트 그리기 ===
-                # 1. 상태 배지 (좌측 상단) - 폰트 24 유지
                 frame = draw_ui_text(frame, badge_text, (20, 20), 24, bg_color=badge_color, align="left")
-                
-                # 2. 피드백 자막 (중앙 하단) - [수정] 폰트 20으로 축소, 위치 미세 조정
-                # 자막 배경은 항상 검정 반투명
-                frame = draw_ui_text(frame, subtitle_text, (w//2, h-50), 20, bg_color=(0,0,0), align="center")
-                
+                if subtitle_text:
+                    frame = draw_ui_text(frame, subtitle_text, (w//2, h-50), 20, bg_color=(0,0,0), align="center")
                 if border_color:
                     cv2.rectangle(frame, (0,0), (w, h), border_color, 15)
             
-            # 음성 상태 관리
             if new_speech_state != "INIT" and new_speech_state != current_speech_state:
-                if new_speech_state == "STANDBY": speak_message("전신이 보이게 앉아주세요.")
-                elif new_speech_state == "STABILIZING": speak_message("확인되었습니다. 움직이지 마세요.")
-                elif new_speech_state == "READY_COMPLETE": speak_message("AI 코칭을 시작합니다.")
+                if new_speech_state == "STANDBY": 
+                    speak_message("전신이 보이게 앉아주세요.")
+                elif new_speech_state == "STABILIZING": 
+                    pass 
+                elif new_speech_state == "READY_COMPLETE": 
+                    if not has_said_start: 
+                        speak_message("AI 코칭을 시작합니다.")
+                        has_said_start = True
                 current_speech_state = new_speech_state
             
-            # 2분할 화면 병합
             final_display = frame
             if guide_img_resized is not None:
                 final_display = np.hstack((guide_img_resized, frame))
-                # 가이드 쪽 텍스트 (이미지가 있어서 흰색 글씨 잘 보임)
                 cv2.putText(final_display, "GUIDE POSE", (20, 50), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 2)
 
             output_w = 1280
             aspect_ratio = final_display.shape[0] / final_display.shape[1]
             output_h = int(output_w * aspect_ratio)
             final_display_resized = cv2.resize(final_display, (output_w, output_h))
+            
+            if is_recording:
+                cv2.circle(final_display_resized, (output_w - 30, 30), 10, (0, 0, 255), -1)
 
             cv2.imshow(WINDOW_NAME, final_display_resized)
             
             if is_recording and video_recorder:
-                if video_recorder.write_frame(frame, current_timestamp): 
-                    if len(log_entry) > 2: recorded_data_log.append(log_entry)
+                video_recorder.write_frame(frame, current_timestamp)
+                # [중요] 녹화 중일 때만 데이터 수집 (단, 모든 상태 기록 포함)
+                if len(log_entry) > 2: 
+                    recorded_data_log.append(log_entry)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q'): break
@@ -439,18 +442,22 @@ def run_mermaid_coach():
                     is_recording = False
                     if video_recorder: video_recorder.stop_recording()
                 else:
-                    if not calibrator.is_calibrated: print("[!] 캘리브레이션 중입니다.")
-                    else:
-                        is_recording = True
-                        video_recorder = VideoRecorder(frame_width, frame_height, calibrator.get_measured_fps())
-                        video_recorder.start_recording()
+                    fps = calibrator.get_best_fps()
+                    is_recording = True
+                    video_recorder = VideoRecorder(frame_width, frame_height, fps)
+                    video_recorder.start_recording()
 
     except Exception as e: print(f"Error: {e}")
     finally:
         cap.release()
         if video_recorder: video_recorder.stop_recording()
         cv2.destroyAllWindows()
-        if recorded_data_log: pd.DataFrame(recorded_data_log).to_csv("Mermaid_Log.csv", index=False)
+        
+        if recorded_data_log:
+            timestamp_str = datetime.now().strftime('%Y%m%d_%H%M%S')
+            csv_filename = f"Mermaid_Log_{timestamp_str}.csv"
+            pd.DataFrame(recorded_data_log).to_csv(csv_filename, index=False)
+            print(f"[저장 완료] 로그 파일: {csv_filename}")
 
 if __name__ == "__main__":
     run_mermaid_coach()
