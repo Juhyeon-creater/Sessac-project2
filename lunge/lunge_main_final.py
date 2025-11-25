@@ -26,12 +26,12 @@ except ImportError:
 GUIDE_IMAGE_PATH = 'lunge/lunge.png'
 SEQUENCE_LENGTH = 30
 
-ENTER_THRESHOLD = 130  
-EXIT_THRESHOLD = 150   
-RESET_THRESHOLD = 165  
+ENTER_THRESHOLD = 130
+EXIT_THRESHOLD = 150
+RESET_THRESHOLD = 165
 
 # 목표 각도 (이 각도에 가까울수록 점수 높음)
-TARGET_ANGLE = 100.0 
+TARGET_ANGLE = 90.0
 
 HOLD_DURATION = 2.0
 TRANSITION_DURATION = 4.0
@@ -42,25 +42,67 @@ SENSOR_TIMEOUT = 0.05
 PELVIS_THRESH = 5.0 # 경고 기준 (화면 표시용)
 
 # ===============================
-# 2. 디자인 유틸리티 (폰트 설정)
+# 2. 디자인 유틸리티 (폰트 및 UI)
 # ===============================
 def get_font(size):
     try: return ImageFont.truetype("malgun.ttf", size)
     except: return ImageFont.load_default()
 
+def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,255,255), align="left"):
+    """
+    반투명 배경이 있는 예쁜 텍스트 그리기 (자막용)
+    """
+    if not text: return img
+
+    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil, 'RGBA')
+    font = get_font(font_size)
+    
+    bbox = draw.textbbox((0, 0), text, font=font)
+    w = bbox[2] - bbox[0]
+    h = bbox[3] - bbox[1]
+    
+    x, y = pos
+    padding_x = 12
+    padding_y = 4
+    
+    if align == "center":
+        x = x - (w // 2)
+        bg_box = [x - padding_x, y - padding_y, x + w + padding_x, y + h + padding_y + 2]
+    else:
+        bg_box = [x, y, x + w + padding_x * 2, y + h + padding_y * 2]
+        x += padding_x
+        y += padding_y
+
+    r, g, b = bg_color
+    draw.rectangle(bg_box, fill=(r, g, b, 153)) # 투명도 60%
+    draw.text((x, y), text, font=font, fill=(*text_color, 255))
+    
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+
+def draw_korean_text(img, text, pos, font_size, color_rgb):
+    """
+    단순 텍스트 그리기 (결과 리포트용)
+    """
+    img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
+    draw = ImageDraw.Draw(img_pil)
+    font = get_font(font_size)
+    draw.text(pos, text, font=font, fill=color_rgb)
+    return cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+
 # ===============================
 # 3. TTS 시스템
 # ===============================
 tts_queue = queue.Queue()
-IS_SPEAKING = False 
+IS_SPEAKING = False
 
 def tts_worker_thread():
     global IS_SPEAKING
     while True:
         msg = tts_queue.get()
-        if msg is None: break 
-        
-        IS_SPEAKING = True 
+        if msg is None: break
+
+        IS_SPEAKING = True
         try:
             try:
                 import pythoncom
@@ -75,17 +117,17 @@ def tts_worker_thread():
             engine.stop()
             del engine
             time.sleep(0.3)
-        except Exception as e: 
+        except Exception as e:
             print(f"TTS 오류: {e}")
         finally:
-            IS_SPEAKING = False 
+            IS_SPEAKING = False
             tts_queue.task_done()
 
 threading.Thread(target=tts_worker_thread, daemon=True).start()
 
 def speak(text):
     global IS_SPEAKING
-    IS_SPEAKING = True 
+    IS_SPEAKING = True
     tts_queue.put(text)
 
 # ===============================
@@ -186,8 +228,9 @@ class LungeCoach:
         # 2. 센서 감점 (5도당 3점)
         pelvis_penalty = (self.sensor_diff // 5.0) * 3.0
         
-        if pelvis_penalty > 0:
-            print(f"⚠️ 골반 감점: -{pelvis_penalty:.1f} (기울기: {self.sensor_diff:.1f}도)")
+        # [수정] 골반 감점 print 제거
+        # if pelvis_penalty > 0:
+        #     print(f"⚠️ 골반 감점: -{pelvis_penalty:.1f} (기울기: {self.sensor_diff:.1f}도)")
 
         final_score = angle_score - pelvis_penalty
         return max(0, min(100, final_score))
@@ -204,14 +247,17 @@ class LungeCoach:
         
         avg_score = sum(self.score_history) / len(self.score_history) if self.score_history else 0
         cx = x_start + 50
-        cv2.putText(canvas, "WORKOUT COMPLETE", (cx, 100), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
-        cv2.putText(canvas, f"Avg Score: {avg_score:.1f}", (cx, 150), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        
+        # 결과 리포트 한글화
+        canvas = draw_korean_text(canvas, "운동 완료", (cx, 100), 40, (0, 255, 0))
+        canvas = draw_korean_text(canvas, f"평균 점수: {avg_score:.1f}", (cx, 150), 30, (255, 255, 255))
         
         y_pos = 200
         for i, score in enumerate(self.score_history):
             if i < 6:
-                text = f"Set {(i//2)+1} {'L' if i%2==0 else 'R'}: {score:.1f}"
-                cv2.putText(canvas, text, (cx, y_pos), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 200), 2)
+                side_kor = '왼쪽' if i % 2 == 0 else '오른쪽'
+                text = f"{(i//2)+1}세트 {side_kor}: {score:.1f}"
+                canvas = draw_korean_text(canvas, text, (cx, y_pos), 20, (200, 200, 200))
                 y_pos += 40
         return canvas
 
@@ -237,10 +283,14 @@ class LungeCoach:
         current_time = time.time()
         detected = False
         
+        # 자막 변수 초기화
+        subtitle_text = ""
+
         if results[0].keypoints and len(results[0].keypoints) > 0:
+            # [수정] 파란 박스 제거
+            frame = results[0].plot(boxes=False, img=frame)
             kpts = results[0].keypoints.xyn[0].cpu().numpy()
             
-            # 좌우 반전 (거울 모드)
             l_hip, r_hip = kpts[12], kpts[11]
             l_knee, r_knee = kpts[14], kpts[13]
             l_ankle, r_ankle = kpts[16], kpts[15]
@@ -257,54 +307,78 @@ class LungeCoach:
                 log_data['L_Knee'] = self.smooth_l
                 log_data['R_Knee'] = self.smooth_r
 
-                #cv2.putText(frame, f"L:{int(self.smooth_l)}", (int(l_knee[0]*w), int(l_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-                #cv2.putText(frame, f"R:{int(self.smooth_r)}", (int(r_knee[0]*w), int(r_knee[1]*h)-20), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0,255,255), 2)
-                
+                # 다리 각도 표시 제거됨
                 for kp in [l_hip, l_knee, l_ankle, r_hip, r_knee, r_ankle]:
                     x, y = int(kp[0]*w), int(kp[1]*h)
                     cv2.circle(frame, (x, y), 5, (0, 255, 0), -1)
 
         canvas = np.hstack((guide_resized, frame))
-        
-        # [기존 상단 블랙바]
         cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 40), (0, 0, 0), -1)
 
-        # -----------------------------------------------------------------
-        # [수정된 부분] 텍스트 그리기 로직 (PIL) - 진한 갈색, 상단 중앙, Bold
-        # -----------------------------------------------------------------
-        img_pil = Image.fromarray(cv2.cvtColor(canvas, cv2.COLOR_BGR2RGB))
+        # =========================================================
+        # [화질 개선] 리사이즈를 먼저 하고 -> 그 위에 텍스트를 그립니다.
+        # =========================================================
+        output_w = 1280
+        aspect_ratio = canvas.shape[0] / canvas.shape[1]
+        output_h = int(output_w * aspect_ratio)
+        
+        # 1. 먼저 화면을 키운다 (업스케일링)
+        final_display_resized = cv2.resize(canvas, (output_w, output_h))
+
+        # 2. 키워진 화면 위에 PIL로 텍스트를 그린다 (선명함 유지)
+        img_pil = Image.fromarray(cv2.cvtColor(final_display_resized, cv2.COLOR_BGR2RGB))
         draw = ImageDraw.Draw(img_pil)
-        font_guide = get_font(30)
+        font_guide = get_font(30) # 폰트 크기
 
-        # 1. 진한 갈색 색상 정의 (RGB)
+        # 색상 정의
         dark_brown = (101, 67, 33)
+        text_bg_color = (255, 248, 220)
 
-        # 2. 텍스트 크기 계산
         text = "자세를 취해주세요"
         bbox = draw.textbbox((0, 0), text, font=font_guide)
         text_w = bbox[2] - bbox[0]
         text_h = bbox[3] - bbox[1]
 
-        # 3. 위치 계산 (왼쪽 이미지 영역의 상단 중앙, y=50)
-        # guide_resized 너비는 new_gw
-        x_pos = (new_gw - text_w) // 2
+        # [좌표 계산] 리사이즈된 화면 기준으로 좌표를 다시 잡아야 함
+        scale_factor = output_w / canvas.shape[1]
+        
+        if guide_resized is not None:
+            w_guide = int(guide_resized.shape[1] * scale_factor)
+            x_pos = (w_guide - text_w) // 2
+        else:
+            x_pos = (output_w // 4) - (text_w // 2)
+        
         y_pos = 50 
 
-        # 4. 텍스트 그리기 (진한 갈색, Bold 처리)
-        draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=1, stroke_fill=dark_brown)
+        # 배경 박스
+        padding_x = 10; padding_y = 5
+        bg_bbox = (x_pos + bbox[0] - padding_x, y_pos + bbox[1] - padding_y, 
+                   x_pos + bbox[2] + padding_x, y_pos + bbox[3] + padding_y)
         
-        canvas = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-        # -----------------------------------------------------------------
+        draw.rectangle(bg_bbox, fill=text_bg_color)
+        draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=1, stroke_fill=dark_brown)
+
+        # 3. PIL -> OpenCV 변환 (이것이 최종 출력 이미지가 됨)
+        final_view = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+        # =========================================================
 
         global IS_SPEAKING
         if detected:
             if IS_SPEAKING:
                  if self.state in ["LEFT_HOLD", "RIGHT_HOLD"] and self.hold_start_time:
                       elapsed = current_time - self.hold_start_time
-                      bar_width = int((elapsed / HOLD_DURATION) * 200)
-                      cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 50 + bar_width, 130), (0, 255, 255), -1)
-                      cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 250, 130), (255, 255, 255), 2)
+                      
+                      bar_x = int((new_gw + 50) * scale_factor)
+                      bar_y = int(100 * scale_factor)
+                      bar_h = int(30 * scale_factor)
+                      bar_full_w = int(200 * scale_factor)
+                      
+                      bar_width = int((elapsed / HOLD_DURATION) * bar_full_w)
+                      
+                      cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_h), (0, 255, 255), -1)
+                      cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_full_w, bar_y + bar_h), (255, 255, 255), 2)
             else:
+                # 로직 처리 (상태 머신)
                 if self.state == "INIT":
                     if current_time - self.state_start_time > 1.0:
                         speak("런지 자세 평가를 시작합니다. 전신이 보이게 뒤로 서주세요.")
@@ -321,8 +395,8 @@ class LungeCoach:
                             self.setup_stable_start = None
                     else:
                         self.setup_stable_start = None
-                        if not is_visible: cv2.putText(frame, "MOVE BACK", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
-                        elif not is_standing: cv2.putText(frame, "STAND UP", (50, 250), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+                        if not is_visible: subtitle_text = "뒤로 물러나세요"
+                        elif not is_standing: subtitle_text = "일어서세요"
 
                 elif self.state == "SIDE_CHECK":
                     if abs(l_ankle[0] - r_ankle[0]) > 0.05:
@@ -330,7 +404,7 @@ class LungeCoach:
                         self.state = "LEFT_READY"
                         self.angle_buffer = []
                     else:
-                        cv2.putText(frame, "TURN SIDEWAYS", (50, 200), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+                        subtitle_text = "측면으로 서주세요"
 
                 # --- 왼쪽 ---
                 elif self.state == "LEFT_READY":
@@ -353,9 +427,14 @@ class LungeCoach:
                     else:
                         self.fail_start_time = None
 
-                    bar_width = int((elapsed / HOLD_DURATION) * 200)
-                    cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 50 + bar_width, 130), (0, 255, 255), -1)
-                    cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 250, 130), (255, 255, 255), 2)
+                    bar_x = int((new_gw + 50) * scale_factor)
+                    bar_y = int(100 * scale_factor)
+                    bar_h = int(30 * scale_factor)
+                    bar_full_w = int(200 * scale_factor)
+                    bar_width = int((elapsed / HOLD_DURATION) * bar_full_w)
+                    
+                    cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_h), (0, 255, 255), -1)
+                    cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_full_w, bar_y + bar_h), (255, 255, 255), 2)
 
                     if elapsed >= HOLD_DURATION:
                         score = self.calculate_score_rule()
@@ -405,9 +484,14 @@ class LungeCoach:
                     else:
                         self.fail_start_time = None
 
-                    bar_width = int((elapsed / HOLD_DURATION) * 200)
-                    cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 50 + bar_width, 130), (0, 255, 255), -1)
-                    cv2.rectangle(canvas, (new_gw + 50, 100), (new_gw + 250, 130), (255, 255, 255), 2)
+                    bar_x = int((new_gw + 50) * scale_factor)
+                    bar_y = int(100 * scale_factor)
+                    bar_h = int(30 * scale_factor)
+                    bar_full_w = int(200 * scale_factor)
+                    bar_width = int((elapsed / HOLD_DURATION) * bar_full_w)
+
+                    cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_width, bar_y + bar_h), (0, 255, 255), -1)
+                    cv2.rectangle(final_view, (bar_x, bar_y), (bar_x + bar_full_w, bar_y + bar_h), (255, 255, 255), 2)
 
                     if elapsed >= HOLD_DURATION:
                         score = self.calculate_score_rule()
@@ -442,28 +526,45 @@ class LungeCoach:
                         speak("오른다리 시작.")
 
         if not detected:
-            cv2.putText(frame, "BODY NOT DETECTED", (50, 100), cv2.FONT_HERSHEY_SIMPLEX, 1, (0,0,255), 2)
+            subtitle_text = "사람이 감지되지 않음"
 
-        info_text = f"Set {self.current_set}/{self.total_sets} | {self.state}"
-        if IS_SPEAKING: info_text += " "
-        cv2.putText(canvas, info_text, (new_gw + 10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        
-        if self.sensor_status == "WARNING":
-            cv2.putText(canvas, f"PELVIS WARNING ({self.sensor_diff:.1f})", (new_gw + 10, 70), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
-            log_data['Warning'] = 'Pelvis Tilt'
-        
-        score_text = f"Score: {self.last_score:.1f}"
-        score_color = (0, 255, 0) if self.last_score >= PASS_SCORE else (0, 0, 255)
-        cv2.putText(canvas, score_text, (new_gw + 500, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, score_color, 2)
+        # [수정] 자막 그리기 (draw_ui_text 활용) - 리사이즈된 화면 기준
+        if subtitle_text:
+            h_final, w_final = final_display_resized.shape[:2]
+            final_view = draw_ui_text(final_view, subtitle_text, (w_final // 2, h_final - 100), 30, bg_color=(0, 0, 0), align="center")
 
+        # 세트 정보 표시
+        info_text = f"Set {self.current_set}/{self.total_sets}"
+        info_x = int((new_gw + 10) * scale_factor)
+        info_y = int(30 * scale_factor)
+        cv2.putText(final_view, info_text, (info_x, info_y), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        
+        # [수정] 골반 경고 제거 (화면 표시 안 함)
+        # if self.sensor_status == "WARNING":
+        #     # 빨간색 (RGB: 255, 0, 0)
+        #     warn_y = int(70 * scale_factor)
+        #     final_view = draw_korean_text(final_view, f"골반 비틀림 주의 ({self.sensor_diff:.1f}°)", (info_x, warn_y), 25, (255, 0, 0))
+        #     log_data['Warning'] = 'Pelvis Tilt'
+        
         if self.state == "END":
-            canvas = self.draw_report(canvas, w)
+            final_view = self.draw_report(final_view, int(w * scale_factor))
             
-        return canvas, log_data
+        return final_view, log_data
 
 def main():
     coach = LungeCoach()
     cap = cv2.VideoCapture(0)
+    
+    # [화질 개선] 해상도 강제 설정
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FPS, 30)
+    
+    real_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    real_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"[Info] Camera Resolution: {real_w}x{real_h}")
+
     calibrator = FPSCalibrator()
     recorder = None
     all_logs = []
@@ -483,7 +584,7 @@ def main():
             all_logs.append(log_data)
             cv2.circle(final_view, (final_view.shape[1] - 30, 30), 10, (0, 0, 255), -1)
 
-        cv2.imshow('AI Lunge Coach - Final V17', final_view)
+        cv2.imshow('AI Lunge Coach - Final V18', final_view)
         
         key = cv2.waitKey(1) & 0xFF
         if key == ord('q'): 
