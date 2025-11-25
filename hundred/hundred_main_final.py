@@ -1,3 +1,4 @@
+# 1125 오후 3시 57분 수정
 import cv2
 import numpy as np
 from ultralytics import YOLO
@@ -13,6 +14,12 @@ import threading
 import queue
 import os
 from PIL import ImageFont, ImageDraw, Image
+
+# 윈도우 소리 설정
+try:
+    import pythoncom
+except ImportError:
+    pass
 
 # ===============================
 # 1. 설정값 (Thresholds)
@@ -42,9 +49,6 @@ def get_font(size):
     except: return ImageFont.load_default()
 
 def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,255,255), align="left"):
-    """
-    반투명 배경이 있는 예쁜 텍스트 그리기
-    """
     if not text: return img
 
     img_pil = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
@@ -77,24 +81,40 @@ def draw_ui_text(img, text, pos, font_size, bg_color=(0,0,0), text_color=(255,25
 # 3. TTS & Recorders
 # ===============================
 tts_queue = queue.Queue()
+IS_SPEAKING = False
+
 def tts_worker_thread():
+    global IS_SPEAKING
     while True:
         msg = tts_queue.get()
-        if msg is None: break 
+        if msg is None: break
+        
+        IS_SPEAKING = True
         try:
             engine = pyttsx3.init()
             engine.setProperty('rate', 150)
             engine.say(msg)
             engine.runAndWait()
-            engine.stop() 
-            del engine    
+            engine.stop()
+            del engine
+            time.sleep(0.2) # 멘트 간 간격 최소화
         except Exception as e: print(f"TTS 오류: {e}")
-        tts_queue.task_done()
+        finally:
+            IS_SPEAKING = False
+            tts_queue.task_done()
+
 threading.Thread(target=tts_worker_thread, daemon=True).start()
 
 def speak_message(message):
-    if tts_queue.qsize() < 3: 
+    # 큐가 너무 밀려있으면(2개 이상) 오래된 것 무시하고 새 메시지 추가
+    if tts_queue.qsize() < 2: 
         tts_queue.put(message)
+
+# [추가] 중요 멘트 시 큐 비우기 (타이밍 맞추기용)
+def clear_and_speak(message):
+    with tts_queue.mutex:
+        tts_queue.queue.clear()
+    tts_queue.put(message)
 
 last_speech_time = 0
 speech_cooldown = 3.0
@@ -167,7 +187,6 @@ class HundredCoach:
         self.state_start_time = None
         self.last_feedback_time = 0 
 
-    # [수정] 숫자를 한글 발음("일", "이", "삼")으로 변환하는 함수 추가
     def get_kor_set(self):
         mapping = {1: "일", 2: "이", 3: "삼", 4: "사", 5: "오"}
         return mapping.get(self.current_set, str(self.current_set))
@@ -207,7 +226,6 @@ class HundredCoach:
                 self.state_start_time = now
                 self.last_feedback_time = now
                 
-                # [수정] 음성 출력 시 "일세트, 이세트" 발음 적용
                 voice_msg = f"{self.get_kor_set()}세트 시작"
                 return f"{self.current_set}세트 시작", (0, 255, 0), "버티기 시작!", voice_msg, None
             else:
@@ -217,16 +235,17 @@ class HundredCoach:
         if self.state == "REST":
             elapsed = now - self.state_start_time
             remain = self.REST_DURATION - elapsed
+            
             if remain <= 0:
                 self.state = "WAIT_LIFT"
                 self.current_set += 1
                 self.state_start_time = now
                 
-                # [수정] 음성 출력 시 "일세트, 이세트" 발음 적용
                 voice_msg = f"{self.get_kor_set()}세트 시작."
                 return f"{self.current_set}세트 준비", (0, 255, 255), "다시 다리를 올리세요", voice_msg, None
             
-            return "휴식 중", (200, 200, 200), f"다음 세트까지 {int(remain)+8}초", None, None
+            # [수정] 오류 수정: remain + 8 -> remain + 1
+            return "휴식 중", (200, 200, 200), f"다음 세트까지 {int(remain)+1}초", None, None
 
         # 5. [운동(HOLD) 상태]
         if self.state == "HOLD":
@@ -331,20 +350,19 @@ def run_hundred_coach():
     print("Loading YOLO...")
     model = YOLO("yolo11n-pose.pt") 
     cap = cv2.VideoCapture(0)
-
-    # ==========================================
+    
     # [화질 개선] 해상도 설정 추가 (HD 화질)
-    # ==========================================
-    #cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)  # 너비
-    #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)  # 높이
-    # 만약 더 좋은 화질을 원하면 아래 주석을 풀고 위를 주석 처리하세요 (FHD)
-    #cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-    #cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     cap.set(cv2.CAP_PROP_FPS, 30)
-    frame_width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    frame_height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    
+    real_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    real_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    print(f"[Info] Camera Resolution: {real_w}x{real_h}")
+
+    frame_width = real_w
+    frame_height = real_h
     
     # 가이드 이미지 리사이징
     guide_img_resized = None
@@ -367,9 +385,7 @@ def run_hundred_coach():
             ret, frame = cap.read()
             if not ret: break
             
-            # [수정됨] 좌우 반전 (거울 모드)
             frame = cv2.flip(frame, 1)
-
             frame_num += 1
             current_timestamp = time.time()
             h, w, _ = frame.shape
@@ -378,7 +394,6 @@ def run_hundred_coach():
             results = model(frame, verbose=False, conf=0.5)
             log_entry = {'Timestamp': current_timestamp, 'Frame': frame_num}
             
-            # UI 변수 초기화
             badge_text = "대기 중"
             badge_color = (100, 100, 100)
             subtitle_text = "전신이 보이게 누워주세요"
@@ -413,7 +428,7 @@ def run_hundred_coach():
                             subtitle_text = f"움직이지 마세요 {1.5 - stable_time:.1f}"
                         else:
                             if not has_said_start:
-                                speak_message("자세 확인. 시작합니다.")
+                                clear_and_speak("자세 확인. 시작합니다.") # 중요 멘트 즉시 실행
                                 has_said_start = True
                             msg = hundred.start_preparation(current_timestamp)
                     else:
@@ -425,13 +440,20 @@ def run_hundred_coach():
                                 trigger_voice_feedback("골반이 흔들립니다")
                                 subtitle_text = "골반 고정하세요!" 
 
+                        # 상태 업데이트
+                        prev_state = hundred.state
                         res_badge, res_col, res_sub, res_voice, res_border = hundred.update(angle, current_timestamp)
+                        
+                        # 상태가 변경될 때 중요한 멘트면 큐 비우고 말하기 (즉시 반응)
+                        if hundred.state != prev_state and res_voice:
+                            clear_and_speak(res_voice)
+                        elif res_voice:
+                            speak_message(res_voice)
                         
                         badge_text = res_badge
                         badge_color = res_col
                         subtitle_text = res_sub
                         if res_border: border_color = res_border
-                        if res_voice: speak_message(res_voice)
 
                     recorded_data_log.append(log_entry)
 
@@ -439,7 +461,7 @@ def run_hundred_coach():
                     lying_stable_start = None
                     if hundred.state != "IDLE" and hundred.state != "FINISHED":
                         hundred.reset()
-                        speak_message("자세가 풀렸습니다.")
+                        clear_and_speak("자세가 풀렸습니다.")
                     
                     badge_text = "인식 불가"
                     subtitle_text = "전신이 보이게 누워주세요"
@@ -449,7 +471,7 @@ def run_hundred_coach():
             if subtitle_text:
                 frame = draw_ui_text(frame, subtitle_text, (w//2, h-50), 20, bg_color=(0,0,0), align="center")
             
-            ##### [수정] 빨간 테두리 제거 #####
+            # [수정] 빨간 테두리 제거 (주석 처리)
             # if border_color:
             #    cv2.rectangle(frame, (0,0), (w, h), border_color, 15)
 
@@ -459,56 +481,48 @@ def run_hundred_coach():
                 final_display = np.hstack((guide_img_resized, frame))
 
             # -----------------------------------------------------------------
-            # [수정] 텍스트 및 배경색 그리기 (PIL)
+            # [수정] 텍스트 및 배경색 그리기 (PIL) - 리사이즈 후 적용 (화질 개선)
             # -----------------------------------------------------------------
-            img_pil = Image.fromarray(cv2.cvtColor(final_display, cv2.COLOR_BGR2RGB))
-            draw = ImageDraw.Draw(img_pil)
-            font_guide = get_font(30)
-
-            # 1. 색상 및 폰트 정의
-            dark_brown = (101, 67, 33)  # 텍스트 색상
-            text_bg_color = (255, 248, 220) # 배경색 (크림색 예시)
-
-            # 2. 텍스트 크기 및 좌표 계산
-            text = "자세를 취해주세요"
-            bbox = draw.textbbox((0, 0), text, font=font_guide)
-            text_w = bbox[2] - bbox[0]
-            text_h = bbox[3] - bbox[1]
-
-            # 3. 위치 계산 (왼쪽 이미지 영역의 상단 중앙)
-            if guide_img_resized is not None:
-                w_guide = guide_img_resized.shape[1]
-                x_pos = (w_guide - text_w) // 2
-            else:
-                h_final, w_final = final_display.shape[:2]
-                x_pos = (w_final // 4) - (text_w // 2)
-
-            y_pos = 50
-
-            # --- [추가] 배경 사각형 그리기 ---
-            padding_x = 10
-            padding_y = 5
-            # 배경 사각형 좌표 계산
-            bg_bbox = (
-                x_pos + bbox[0] - padding_x,
-                y_pos + bbox[1] - padding_y,
-                x_pos + bbox[2] + padding_x,
-                y_pos + bbox[3] + padding_y
-            )
-            # 배경 그리기
-            draw.rectangle(bg_bbox, fill=text_bg_color)
-            # ----------------------------------
-
-            # 4. 텍스트 그리기 (진한 갈색, Bold 처리)
-            draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=1, stroke_fill=dark_brown)
-            
-            final_display = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
-            # -----------------------------------------------------------------
-
             output_w = 1280
             aspect_ratio = final_display.shape[0] / final_display.shape[1]
             output_h = int(output_w * aspect_ratio)
+            
+            # 1. 먼저 리사이즈
             final_display_resized = cv2.resize(final_display, (output_w, output_h))
+
+            # 2. 리사이즈된 화면 위에 텍스트 그리기
+            img_pil = Image.fromarray(cv2.cvtColor(final_display_resized, cv2.COLOR_BGR2RGB))
+            draw = ImageDraw.Draw(img_pil)
+            font_guide = get_font(30)
+
+            dark_brown = (101, 67, 33)
+            text_bg_color = (255, 248, 220)
+
+            text = "자세를 취해주세요"
+            bbox = draw.textbbox((0, 0), text, font=font_guide)
+            text_w = bbox[2] - bbox[0]
+            
+            # 좌표 재계산 (리사이즈 비율 적용)
+            if guide_img_resized is not None:
+                scale_factor = output_w / final_display.shape[1]
+                w_guide = int(guide_img_resized.shape[1] * scale_factor)
+                x_pos = (w_guide - text_w) // 2
+            else:
+                x_pos = (output_w // 4) - (text_w // 2)
+
+            y_pos = 50
+
+            # 배경 박스
+            padding_x = 10; padding_y = 5
+            bg_bbox = (x_pos + bbox[0] - padding_x, y_pos + bbox[1] - padding_y, 
+                       x_pos + bbox[2] + padding_x, y_pos + bbox[3] + padding_y)
+            draw.rectangle(bg_bbox, fill=text_bg_color)
+
+            # 텍스트
+            draw.text((x_pos, y_pos), text, font=font_guide, fill=dark_brown, stroke_width=1, stroke_fill=dark_brown)
+            
+            final_display_resized = cv2.cvtColor(np.array(img_pil), cv2.COLOR_RGB2BGR)
+            # -----------------------------------------------------------------
             
             if is_recording:
                 cv2.circle(final_display_resized, (output_w - 30, 30), 10, (0, 0, 255), -1)
