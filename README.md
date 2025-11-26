@@ -6,3 +6,4 @@
 ## 1. 프로젝트 소개
 <br>
 
+<img width="909" height="251" alt="image" src="https://github.com/user-attachments/assets/f19c6aab-36eb-4bf1-8845-7c4774988691" />
