@@ -46,7 +46,7 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 git clone https://github.com/Juhyeon-creater/Sessac-project2.git
 
 # 패키지 설치
-pip install ultralytics opencv-python pandas joblib pyttsx3 PIL
+pip install -r requirements.txt
 
 # 실행 (원하는 모드 선택)
 python main.py
