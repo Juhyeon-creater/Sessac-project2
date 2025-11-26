@@ -35,6 +35,7 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 │   ├── mermaid_main_final.py    # 머메이드 메인 실행 파일
 │   └── reference.png            # 머메이드 참고 자세
 │
+├── requirements.txt             # 설치 패키지 리스트
 ├── main.py                      # main 실행 파일(런지, 머메이드, 헌드레드 실행)
 │
 ├── .gitignore                   # Git 업로드 제외 설정
