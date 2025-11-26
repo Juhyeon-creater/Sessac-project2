@@ -17,21 +17,6 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 필라테스 전문가 영상 데이터를 분석하여 필라테스 동작별 정상 동작 범위를 라벨링하였습니다.
 데이터 라벨에 따른 사용자 분석 데이터를 토대로 실시간 음성, 자막 피드백과 평가 점수를 제공하는 서비스를 구현하였습니다.
 
-<코드 분류>
-1. hundred 자세
-- 폴더명: hundred
-- 구분: 
-- 내용: 
-
-2. mermaid 자세
-- 폴더명: mermaid
-- 구분:
-- 내용:
-
-3. 프로젝트 운영
-- 폴더명: project
-- 구분:
-- 내용:
 
 ## 시작가이드
 
@@ -80,7 +65,6 @@ python main.py
 **Communication**
 <br>
 ![Notion](https://img.shields.io/badge/Notion-%23000000.svg?style=for-the-badge&logo=notion&logoColor=white)
-<br>
 <br>
 **Sensor**
 <br>
