@@ -10,7 +10,7 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 - 사용 모델/기기: YOLO, MPU6050 센서
 - 프로세스:
   
-<img width="909" height="251" alt="image" src="https://github.com/user-attachments/assets/f19c6aab-36eb-4bf1-8845-7c4774988691">
+<img width="1599" height="409" alt="image" src="https://github.com/user-attachments/assets/e04e515b-3aa3-4c2c-9c85-146b68d66def" />
 
 
 ## 2. 진행 내용 상세
