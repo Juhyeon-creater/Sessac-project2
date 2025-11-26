@@ -53,6 +53,19 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 ├── .gitignore                   # Git 업로드 제외 설정
 └── README.md                    # 프로젝트 설명서
 ```
+### 설치
+```bash
+# 레포지토리 클론
+git clone [https://github.com/사용자아이디/레포지토리명.git](https://github.com/사용자아이디/레포지토리명.git)
+
+# 패키지 설치
+pip install ultralytics opencv-python pandas
+
+# 실행
+python main.py
+```
+
+
 
 ## Stacks
 
