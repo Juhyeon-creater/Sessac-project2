@@ -50,6 +50,8 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 │   ├── mermaid_main_final.py    # 머메이드 메인 실행 파일
 │   └── reference.png            # 머메이드 참고 자세
 │
+├── main.py                      # main 실행 파일(런지, 머메이드, 헌드레드 실행)
+│
 ├── .gitignore                   # Git 업로드 제외 설정
 └── README.md                    # 프로젝트 설명서
 ```
@@ -80,7 +82,7 @@ python main.py
 ![Notion](https://img.shields.io/badge/Notion-%23000000.svg?style=for-the-badge&logo=notion&logoColor=white)
 <br>
 <br>
-**Others**
+**Sensor**
 <br>
 ![Raspberry Pi](https://img.shields.io/badge/-Raspberry_Pi-C51A4A?style=for-the-badge&logo=Raspberry-Pi)
 <br>
