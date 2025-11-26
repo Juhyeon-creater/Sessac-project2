@@ -8,7 +8,7 @@ import pandas as pd
 from datetime import datetime # 파일명 및 시간 기록용
 
 # ===============================
-# 요가 각도 계산
+# 각도 계산
 # ===============================
 TARGET_ANGLE_MIN = 7.77
 TARGET_ANGLE_MAX = 14.75
