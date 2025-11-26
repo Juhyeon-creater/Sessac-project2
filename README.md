@@ -1,4 +1,4 @@
-# [새싹_성북 헬스케어분야 서비스 기획자 부트캠프 4기] Final Project 1Team 
+# [새싹 헬스케어 서비스 기획자 부트캠프 4기] Final Project - 1Team 
 ## **HOMElates : YOLO11/센서 기반 실시간 AI필라테스 자세 교정 서비스 기획**
 팀명 : 필라텔레토비  (강주현, 김민호, 김한주, 신의진, 조윤아, 황규원)
 
@@ -10,58 +10,45 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 - 사용 모델/기기: YOLO, MPU6050 센서
 - 프로세스:
   
-<img width="909" height="251" alt="image" src="https://github.com/user-attachments/assets/f19c6aab-36eb-4bf1-8845-7c4774988691">
+<img width="1599" height="409" alt="image" src="https://github.com/user-attachments/assets/e04e515b-3aa3-4c2c-9c85-146b68d66def" />
 
 
 ## 2. 진행 내용 상세
 필라테스 전문가 영상 데이터를 분석하여 필라테스 동작별 정상 동작 범위를 라벨링하였습니다.
 데이터 라벨에 따른 사용자 분석 데이터를 토대로 실시간 음성, 자막 피드백과 평가 점수를 제공하는 서비스를 구현하였습니다.
 
-<코드 분류>
-1. hundred 자세
-- 폴더명: hundred
-- 구분: 
-- 내용: 
 
-2. mermaid 자세
-- 폴더명: mermaid
-- 구분:
-- 내용:
-
-3. 프로젝트 운영
-- 폴더명: project
-- 구분:
-- 내용:
-
-## 시작가이드
+## 3. 시작가이드
 
 ### 📂 디렉토리 구조 (Directory Structure)
 
 ```bash
-├── 📁 hundred/                  # 헌드레드(Hundred) 동작 분석 모듈
+├── 📁 hundred/                  # 헌드레드(Hundred) 동작 교정 모듈
 │   ├── hundred_main_final.py    # 헌드레드 메인 실행 파일
 │   └── reference.png            # 헌드레드 참고 자세 이미지
 │
-├── 📁 lunge/                    # 런지(Lunge) 자세 교정 모듈
+├── 📁 lunge/                    # 런지(Lunge) 자세 측정 모듈
 │   ├── lunge.png                # 런지 참고 자세 이미지
 │   └── lunge_main_final.py      # 최종 런지 분석 로직
 │
-├── 📁 mermaid/                  # 머메이드(Mermaid) 스트레칭 모듈
+├── 📁 mermaid/                  # 머메이드(Mermaid)자세 교정 모듈
 │   ├── mermaid_main_final.py    # 머메이드 메인 실행 파일
 │   └── reference.png            # 머메이드 참고 자세
+│
+├── main.py                      # main 실행 파일(런지, 머메이드, 헌드레드 실행)
 │
 ├── .gitignore                   # Git 업로드 제외 설정
 └── README.md                    # 프로젝트 설명서
 ```
-### 설치
+### ⬇️설치
 ```bash
 # 레포지토리 클론
-git clone [https://github.com/사용자아이디/레포지토리명.git](https://github.com/사용자아이디/레포지토리명.git)
+git clone https://github.com/Juhyeon-creater/Sessac-project2.git
 
 # 패키지 설치
-pip install ultralytics opencv-python pandas
+pip install -r requirements.txt
 
-# 실행
+# 실행 (원하는 모드 선택)
 python main.py
 ```
 
@@ -74,14 +61,24 @@ python main.py
 ![Visual Studio Code](https://img.shields.io/badge/Visual%20Studio%20Code-0078d7.svg?style=for-the-badge&logo=visual-studio-code&logoColor=white)
 ![Google Colab](https://img.shields.io/badge/Google%20Colab-%23F9A825.svg?style=for-the-badge&logo=googlecolab&logoColor=white)
 ![Anaconda](https://img.shields.io/badge/Anaconda-%2344A833.svg?style=for-the-badge&logo=anaconda&logoColor=white)
+![Git](https://img.shields.io/badge/git-%23F05033.svg?style=for-the-badge&logo=git&logoColor=white)
+<br>
+**Development & AI**
+<br>
+![Python](https://img.shields.io/badge/python-3670A0?style=for-the-badge&logo=python&logoColor=ffdd54)
+![YOLO](https://img.shields.io/badge/YOLO-111F68?style=for-the-badge&logo=yolo&logoColor=white)
+![OpenCV](https://img.shields.io/badge/opencv-%23white.svg?style=for-the-badge&logo=opencv&logoColor=white)
+![Pandas](https://img.shields.io/badge/pandas-%23150458.svg?style=for-the-badge&logo=pandas&logoColor=white)
 <br>
 **Communication**
 <br>
 ![Notion](https://img.shields.io/badge/Notion-%23000000.svg?style=for-the-badge&logo=notion&logoColor=white)
+![Slack](https://img.shields.io/badge/Slack-4A154B?style=for-the-badge&logo=slack&logoColor=white)
+![Google Drive](https://img.shields.io/badge/Google%20Drive-4285F4?style=for-the-badge&logo=googledrive&logoColor=white)
 <br>
-<br>
-**Others**
+**Hardware**
 <br>
 ![Raspberry Pi](https://img.shields.io/badge/-Raspberry_Pi-C51A4A?style=for-the-badge&logo=Raspberry-Pi)
+<img src="https://img.shields.io/badge/Sensor-MPU6050-blue?style=for-the-badge" alt="MPU6050">
 <br>
 
