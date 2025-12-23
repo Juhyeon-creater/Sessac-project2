@@ -71,6 +71,7 @@ YOLO11 Pose Estimation 모델과 자이로/가속도 센서를 결합하여 정�
 ├── 📄 requirements.txt                 # 의존성 패키지 목록
 ├── 📄 .gitignore                       # Git 제외 파일 설정
 └── 📄 README.md                        # 프로젝트 설명서
+* [시연영상 보기](https://github.com/Juhyeon-creater/Sessac-project2/releases/tag/demo-v1)
 ```
 ### ⬇️설치
 ```bash
