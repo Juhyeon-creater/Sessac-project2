@@ -3,15 +3,41 @@
 팀명 : 필라텔레토비  (강주현, 김민호, 김한주, 신의진, 조윤아, 황규원)
 
 ## 1. 프로젝트 소개
-HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평가하기 위해, 영상·센서 데이터 소스를 통합하고 최적의 머신러닝 모델을 적용한 데이터 기반 서비스로 설계되었습니다.
+HOMElates는 홈트레이닝 환경에서 필라테스 동작을 실시간으로 분석하고 교정해주는 AI 기반 자세 교정 시스템입니다.
+YOLO11 Pose Estimation 모델과 자이로/가속도 센서를 결합하여 정확한 자세 피드백을 제공합니다.
 
-- 일정: 2025.11.10 - 2025.11.26
+- 일정: 2025.11.01 - 2025.11.26 (4주)
 - 사용 데이터: 필라테스 영상 데이터, 신체 좌표 및 각도 데이터, 골반 불균형 데이터
 - 사용 모델/기기: YOLO, MPU6050 센서
 - 프로세스:
   
 <img width="1599" height="409" alt="image" src="https://github.com/user-attachments/assets/e04e515b-3aa3-4c2c-9c85-146b68d66def" />
 
+- 프로젝트 목표
+  - 실시간 필라테스 동작 인식, 분석, 음성 코칭
+  - 골반 각도 측정을 통한 정밀한 자세 교정
+  - 초보자도 쉽게 사용할 수 있는 직관적인 인터페이스
+ 
+- 담당 역할
+  - YOLO + 자이로/가속도 센서 융합
+  - 자이로/가속도 센서 회로 설계 및 브레드보드 구현
+  - 산점도, Line graph 기반 상관관계 분석
+  - LSTM 기반 모델 성능 평가
+  - 최종 발표
+ 
+- 주요 기능
+  - 실시간 자세 인식
+    - YOLO11 Pose Estimation: 17개 신체 키포인트 실시간 추적
+    - 프레임 처리 속도: 평균 30 FPS
+    - 지원 동작: Hundred (헌드레드), Lunge (런지), Mermaid (머메이드)
+  - 골반 각도 측정
+    - MPU6050 센서: 6축 가속도/자이로 센서로 정밀한 골반 각도 측정
+    - 실시간 피드백: 각도 편차에 따른 즉각적인 교정 가이드
+    - 시각적 표시: 화면에 각도 수치 및 교정 방향 표시
+  - 3가지 필라테스 동작 지원
+    - Hundred (헌드레드):	복부 코어 강화 동작-골반 중립 자세, 다리 각도, 상체 안정성
+    - Lunge (런지):	하체 근력 강화 동작-무릎 정렬, 골반 기울기, 상체 균형
+    - Mermaid (머메이드):	측면 스트레칭 동작-척추 정렬, 골반 안정성, 팔 각도
 
 ## 2. 진행 내용 상세
 필라테스 전문가 영상 데이터를 분석하여 필라테스 동작별 정상 동작 범위를 라벨링하였습니다.
@@ -23,23 +49,28 @@ HOMElates는 사용자 운동 자세와 정확성을 체계적으로 분석·평
 ### 📂 디렉토리 구조 (Directory Structure)
 
 ```bash
-├── 📁 hundred/                  # 헌드레드(Hundred) 동작 교정 모듈
-│   ├── hundred_main_final.py    # 헌드레드 메인 실행 파일
-│   └── reference.png            # 헌드레드 참고 자세 이미지
+├── 📁 Analysis/                        # 분석 및 연구 노트북
+│   ├── JH_hundred_pose_yolo_pelvis_correlation.ipynb
+│   ├── JH_hundred_pose_yolo_pelvis_evaluation.ipynb
+│   ├── YOLO Pose Normalization & Preprocessing Pipeline.ipynb
+│   └── YOLO_applied_video.ipynb
 │
-├── 📁 lunge/                    # 런지(Lunge) 자세 측정 모듈
-│   ├── lunge.png                # 런지 참고 자세 이미지
-│   └── lunge_main_final.py      # 최종 런지 분석 로직
+├── 📁 hundred/                         # 헌드레드(Hundred) 동작 교정 모듈
+│   ├── hundred_main_final.py           # 헌드레드 메인 실행 파일
+│   └── reference.png                   # 헌드레드 참고 자세 이미지
 │
-├── 📁 mermaid/                  # 머메이드(Mermaid)자세 교정 모듈
-│   ├── mermaid_main_final.py    # 머메이드 메인 실행 파일
-│   └── reference.png            # 머메이드 참고 자세
+├── 📁 lunge/                           # 런지(Lunge) 자세 측정 모듈
+│   ├── lunge_main_final.py             # 런지 메인 실행 파일
+│   └── lunge.png                       # 런지 참고 자세 이미지
 │
-├── requirements.txt             # 설치 패키지 리스트
-├── main.py                      # main 실행 파일(런지, 머메이드, 헌드레드 실행)
+├── 📁 mermaid/                         # 머메이드(Mermaid) 자세 교정 모듈
+│   ├── mermaid_main_final.py           # 머메이드 메인 실행 파일
+│   └── reference.png                   # 머메이드 참고 자세 이미지
 │
-├── .gitignore                   # Git 업로드 제외 설정
-└── README.md                    # 프로젝트 설명서
+├── 📄 main.py                          # 메인 실행 파일 (전체 시스템 통합)
+├── 📄 requirements.txt                 # 의존성 패키지 목록
+├── 📄 .gitignore                       # Git 제외 파일 설정
+└── 📄 README.md                        # 프로젝트 설명서
 ```
 ### ⬇️설치
 ```bash
