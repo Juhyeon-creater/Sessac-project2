@@ -56,8 +56,11 @@ YOLO11 Pose Estimation 모델과 자이로/가속도 센서를 결합하여 정�
 │   └── YOLO_applied_video.ipynb
 │
 ├── 📁 hundred/                         # 헌드레드(Hundred) 동작 교정 모듈
+│   ├── Hundred_EDA.ipynb               # Hundred 동작 탐색적 데이터 분석 (EDA)
+│   ├── hundred_cam_legangle.py         # Hundred 동작 다리 각도 측정 스크립트
 │   ├── hundred_main_final.py           # 헌드레드 메인 실행 파일
 │   └── reference.png                   # 헌드레드 참고 자세 이미지
+│   └── 헌드레드 시연.jpg
 │
 ├── 📁 lunge/                           # 런지(Lunge) 자세 측정 모듈
 │   ├── lunge_main_final.py             # 런지 메인 실행 파일
@@ -65,13 +68,13 @@ YOLO11 Pose Estimation 모델과 자이로/가속도 센서를 결합하여 정�
 │
 ├── 📁 mermaid/                         # 머메이드(Mermaid) 자세 교정 모듈
 │   ├── mermaid_main_final.py           # 머메이드 메인 실행 파일
-│   └── reference.png                   # 머메이드 참고 자세 이미지
+│   └── reference_pose.png              # 머메이드 참고 자세 이미지
 │
 ├── 📄 main.py                          # 메인 실행 파일 (전체 시스템 통합)
 ├── 📄 requirements.txt                 # 의존성 패키지 목록
 ├── 📄 .gitignore                       # Git 제외 파일 설정
 └── 📄 README.md                        # 프로젝트 설명서
-* [시연영상 보기](https://github.com/Juhyeon-creater/Sessac-project2/releases/tag/demo-v1)
+[시연영상 보기](https://github.com/Juhyeon-creater/Sessac-project2/releases/tag/demo-v1)
 ```
 ### ⬇️설치
 ```bash
